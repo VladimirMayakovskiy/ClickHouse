@@ -20,6 +20,7 @@ namespace Setting
 {
     extern const SettingsBool compile_sort_description;
     extern const SettingsUInt64 min_count_to_compile_sort_description;
+    extern const SettingsExpressionJITBackend expression_jit_backend;
 }
 
 namespace ErrorCodes
@@ -63,15 +64,19 @@ WindowDescription extractWindowDescriptionFromWindowNode(const QueryTreeNodePtr 
 
     bool compile_sort_description = query_context_settings[Setting::compile_sort_description];
     size_t min_count_to_compile_sort_description = query_context_settings[Setting::min_count_to_compile_sort_description];
+    ExpressionJITBackend expression_jit_backend = query_context_settings[Setting::expression_jit_backend];
 
     window_description.partition_by.compile_sort_description = compile_sort_description;
     window_description.partition_by.min_count_to_compile_sort_description = min_count_to_compile_sort_description;
+    window_description.partition_by.expression_jit_backend = expression_jit_backend;
 
     window_description.order_by.compile_sort_description = compile_sort_description;
     window_description.order_by.min_count_to_compile_sort_description = min_count_to_compile_sort_description;
+    window_description.order_by.expression_jit_backend = expression_jit_backend;
 
     window_description.full_sort_description.compile_sort_description = compile_sort_description;
     window_description.full_sort_description.min_count_to_compile_sort_description = min_count_to_compile_sort_description;
+    window_description.full_sort_description.expression_jit_backend = expression_jit_backend;
 
     return window_description;
 }

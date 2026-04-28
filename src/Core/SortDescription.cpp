@@ -174,6 +174,7 @@ void compileSortDescriptionIfNeeded(SortDescription & description, const DataTyp
 
     SipHash sort_description_dump_hash;
     sort_description_dump_hash.update(description_dump);
+    sort_description_dump_hash.update(description.expression_jit_backend);
 
     const auto sort_description_hash_key = sort_description_dump_hash.get128();
 
@@ -195,7 +196,12 @@ void compileSortDescriptionIfNeeded(SortDescription & description, const DataTyp
         {
             LOG_TRACE(getLogger(), "Compile sort description {}", description_dump);
 
-            auto compiled_sort_description = compileSortDescription(getJITInstance(), description, sort_description_types, description_dump);
+            auto compiled_sort_description = compileSortDescription(
+	        getJITInstance(),
+		description,
+		sort_description_types,
+		description_dump,
+		description.expression_jit_backend);
             return std::make_shared<CompiledSortDescriptionFunctionHolder>(std::move(compiled_sort_description));
         });
 
@@ -204,7 +210,12 @@ void compileSortDescriptionIfNeeded(SortDescription & description, const DataTyp
     else
     {
         LOG_TRACE(getLogger(), "Compile sort description {}", description_dump);
-        auto compiled_sort_description = compileSortDescription(getJITInstance(), description, sort_description_types, description_dump);
+        auto compiled_sort_description = compileSortDescription(
+	    getJITInstance(),
+	    description,
+	    sort_description_types,
+	    description_dump,
+	    description.expression_jit_backend);
         compiled_sort_description_holder = std::make_shared<CompiledSortDescriptionFunctionHolder>(std::move(compiled_sort_description));
     }
 

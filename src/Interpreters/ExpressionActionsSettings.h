@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Core/SettingsEnums.h>
 #include <Core/ShortCircuitFunctionEvaluation.h>
 #include <Interpreters/Context_fwd.h>
 
@@ -33,6 +34,8 @@ struct ExpressionActionsSettings
     ShortCircuitFunctionEvaluation short_circuit_function_evaluation = ShortCircuitFunctionEvaluation::DISABLE;
 
     bool enable_lazy_columns_replication = false;
+
+    ExpressionJITBackend expression_jit_backend = ExpressionJITBackend::LLVM;
 };
 
 }

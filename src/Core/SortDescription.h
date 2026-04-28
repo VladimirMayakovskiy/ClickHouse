@@ -2,6 +2,7 @@
 
 
 #include <Core/Field.h>
+#include <Core/SettingsEnums.h>
 #include <Common/IntervalKind.h>
 #include <DataTypes/IDataType.h>
 #include <Columns/Collator.h>
@@ -144,6 +145,7 @@ public:
     std::shared_ptr<CompiledSortDescriptionFunctionHolder> compiled_sort_description_holder;
     size_t min_count_to_compile_sort_description = 3;
     bool compile_sort_description = false;
+    ExpressionJITBackend expression_jit_backend = ExpressionJITBackend::LLVM;
 
     bool hasPrefix(const SortDescription & prefix) const;
     bool hasPrefix(const Names & prefix) const;

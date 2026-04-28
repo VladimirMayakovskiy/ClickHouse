@@ -55,6 +55,7 @@ namespace QueryPlanSerializationSetting
     extern const QueryPlanSerializationSettingsBool optimize_group_by_constant_keys;
     extern const QueryPlanSerializationSettingsBool enable_producing_buckets_out_of_order_in_aggregation;
     extern const QueryPlanSerializationSettingsBool serialize_string_in_memory_with_zero_byte;
+    extern const QueryPlanSerializationSettingsExpressionJITBackend expression_jit_backend;
 }
 
 namespace ErrorCodes
@@ -761,6 +762,7 @@ void AggregatingStep::serializeSettings(QueryPlanSerializationSettings & setting
 
     settings[QueryPlanSerializationSetting::compile_aggregate_expressions] = params.compile_aggregate_expressions;
     settings[QueryPlanSerializationSetting::min_count_to_compile_aggregate_expression] = params.min_count_to_compile_aggregate_expression;
+    settings[QueryPlanSerializationSetting::expression_jit_backend] = params.expression_jit_backend;
 
     settings[QueryPlanSerializationSetting::enable_software_prefetch_in_aggregation] = params.enable_prefetch;
     settings[QueryPlanSerializationSetting::optimize_group_by_constant_keys] = params.optimize_group_by_constant_keys;
@@ -910,7 +912,8 @@ QueryPlanStepPtr AggregatingStep::deserialize(Deserialization & ctx)
         ctx.settings[QueryPlanSerializationSetting::min_hit_rate_to_use_consecutive_keys_optimization],
         stats_collecting_params,
         ctx.settings[QueryPlanSerializationSetting::enable_producing_buckets_out_of_order_in_aggregation],
-        ctx.settings[QueryPlanSerializationSetting::serialize_string_in_memory_with_zero_byte]};
+        ctx.settings[QueryPlanSerializationSetting::serialize_string_in_memory_with_zero_byte],
+        ctx.settings[QueryPlanSerializationSetting::expression_jit_backend]};
 
     SortDescription sort_description_for_merging;
 

@@ -114,6 +114,11 @@ if (NOT ((ARCH_AMD64 OR ARCH_AARCH64) AND OS_LINUX) OR SANITIZE OR USE_MUSL)
     set (ENABLE_XRAY 0)
 endif()
 
+option (ENABLE_TPDE_LLVM_BACKEND "Enable TPDE backend for expression JIT" OFF)
+set (TPDE_SOURCE_DIR "" CACHE PATH "Path to TPDE source tree")
+
+option (DUMP_JIT_ARTIFACTS "Dump jit artifacts for LLVM module" OFF)
+
 # Global libraries
 # See:
 # - default_libs.cmake
@@ -523,6 +528,76 @@ add_subdirectory (contrib EXCLUDE_FROM_ALL)
 if (ENABLE_XRAY)
     include (cmake/xray_instrumentation.cmake)
 endif()
+
+if (ENABLE_TPDE_LLVM_BACKEND)
+    if (NOT ENABLE_EMBEDDED_COMPILER)
+        message (FATAL_ERROR "TPDE backend requires USE_EMBEDDED_COMPILER=ON")
+    endif ()
+
+    if (NOT TPDE_SOURCE_DIR)
+        message (FATAL_ERROR "TPDE backend requires TPDE_SOURCE_DIR")
+    endif ()
+
+    add_library(clickhouse-tpde INTERFACE)
+
+    target_include_directories(clickhouse-tpde SYSTEM INTERFACE
+        "${TPDE_SOURCE_DIR}/tpde/include"
+	"${TPDE_SOURCE_DIR}/tpde-llvm/include")
+
+    if (NOT TARGET ch_contrib::llvm)
+	message (FATAL_ERROR "Bundled TPDE integration requires bundled LLVM target ch_contrib::llvm")
+    endif ()
+
+    if (NOT TARGET LLVM)
+	add_library (LLVM INTERFACE)
+
+	target_link_libraries (LLVM INTERFACE ch_contrib::llvm)
+	target_include_directories (LLVM SYSTEM BEFORE INTERFACE ${LLVM_INCLUDE_DIRS})
+
+	target_compile_options(LLVM INTERFACE
+            -Wno-error=unused-parameter
+            -Wno-unused-parameter
+        )
+
+	if (DEFINED LLVM_COMPILE_DEFINITIONS)
+	    target_compile_definitions(LLVM INTERFACE ${LLVM_INCLUDE_DIRS})
+	endif()
+    endif ()
+
+    set(LLVM_VERSION_MAJOR 21)
+    set(LLVM_VERSION_MINOR 1)
+
+    set(LLVM_FOUND TRUE)
+    set(LLVM_ENABLE_RTTI TRUE)
+
+    set(LLVM_INCLUDE_DIRS
+        "${ClickHouse_SOURCE_DIR}/contrib/llvm-project/llvm/include"
+        "${ClickHouse_BINARY_DIR}/contrib/llvm-project/llvm/include"
+        "${ClickHouse_BINARY_DIR}/contrib/llvm-project-cmake/include"
+    )
+
+    if (DEFINED LLVM_COMPILE_DEFINITIONS)
+        set(LLVM_DEFINITIONS "")
+        foreach (llvm_definition ${LLVM_COMPILE_DEFINITIONS})
+            string(APPEND LLVM_DEFINITIONS " -D${llvm_definition}")
+        endforeach ()
+        string(STRIP "${LLVM_DEFINITIONS}" LLVM_DEFINITIONS)
+    endif ()
+
+    set (TPDE_INCLUDE_TESTS OFF CACHE BOOL "" FORCE)
+    set (TPDE_ENABLE_ENCODEGEN ON CACHE BOOL "" FORCE)
+    set (TPDE_ENABLE_LLVM ON CACHE BOOL "" FORCE)
+    set(TPDE_TARGETS x86_64 CACHE STRING "" FORCE)
+    set(TPDE_INCLUDE_TESTS OFF CACHE BOOL "" FORCE)
+
+    if (NOT TARGET tpde_llvm)
+	add_subdirectory ("${TPDE_SOURCE_DIR}" "${ClickHouse_BINARY_DIR}/tpde")
+    endif ()
+
+    target_link_libraries (clickhouse-tpde INTERFACE tpde_llvm tpde)
+
+    message (STATUS "Using TPDE LLVM")
+endif ()
 
 # Sets dummy launchers to suppress linking. Used for clang-tidy builds.
 enable_dummy_launchers_if_needed()

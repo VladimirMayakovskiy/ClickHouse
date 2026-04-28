@@ -1093,6 +1093,14 @@ Compile some scalar functions and operators to native code.
     DECLARE(UInt64, min_count_to_compile_expression, 3, R"(
 Minimum count of executing same expression before it is get compiled.
 )", 0) \
+    DECLARE(ExpressionJITBackend, expression_jit_backend, ExpressionJITBackend::LLVM, R"(
+Select the backend for expression JIT compilation.
+
+Possible values:
+
+- 'llvm' — use the built-in LLVM backend.
+- 'tpde' — use the experimental TPDE backend for supported expresioins and fallback to LLVM.
+)", 0) \
     DECLARE(Bool, compile_aggregate_expressions, true, R"(
 Enables or disables JIT-compilation of aggregate functions to native code. Enabling this setting can improve the performance.
 

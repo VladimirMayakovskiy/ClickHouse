@@ -807,6 +807,16 @@ if (TARGET ch_rust::wasmtime)
     target_link_libraries(dbms PRIVATE ch_rust::wasmtime)
 endif()
 
+if (TARGET clickhouse-tpde)
+    message(STATUS "clickhouse-tpde exists: YES")
+else()
+    message(STATUS "clickhouse-tpde exists: NO")
+endif()
+
+if (TARGET clickhouse-tpde)
+	target_link_libraries(dbms PUBLIC clickhouse-tpde)
+endif ()
+
 if (ENABLE_TESTS)
     macro (grep_gtest_sources BASE_DIR DST_VAR)
         # Cold match files that are not in tests/ directories

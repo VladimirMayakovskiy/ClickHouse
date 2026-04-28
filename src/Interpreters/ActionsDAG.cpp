@@ -1585,9 +1585,12 @@ ActionsDAG ActionsDAG::clone(std::unordered_map<const Node *, const Node *> & ol
 }
 
 #if USE_EMBEDDED_COMPILER
-void ActionsDAG::compileExpressions(size_t min_count_to_compile_expression, const std::unordered_set<const ActionsDAG::Node *> & lazy_executed_nodes)
+void ActionsDAG::compileExpressions(
+    size_t min_count_to_compile_expression,
+    ExpressionJITBackend expression_jit_backend,
+    const std::unordered_set<const ActionsDAG::Node *> & lazy_executed_nodes)
 {
-    compileFunctions(min_count_to_compile_expression, lazy_executed_nodes);
+    compileFunctions(min_count_to_compile_expression, expression_jit_backend, lazy_executed_nodes);
     removeUnusedActions(/*allow_remove_inputs = */ false);
 }
 #endif

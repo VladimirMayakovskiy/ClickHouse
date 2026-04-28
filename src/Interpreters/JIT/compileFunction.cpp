@@ -207,14 +207,15 @@ static void compileFunction(llvm::Module & module, const IFunctionBase & functio
     b.CreateRetVoid();
 }
 
-CompiledFunction compileFunction(CHJIT & jit, const IFunctionBase & function)
+CompiledFunction compileFunction(CHJIT & jit, const IFunctionBase & function, ExpressionJITBackend expression_jit_backend)
 {
     Stopwatch watch;
 
     auto compiled_module = jit.compileModule([&](llvm::Module & module)
     {
         compileFunction(module, function);
-    });
+    },
+    expression_jit_backend);
 
     ProfileEvents::increment(ProfileEvents::CompileExpressionsMicroseconds, watch.elapsedMicroseconds());
     ProfileEvents::increment(ProfileEvents::CompileExpressionsBytes, compiled_module.size);
@@ -541,7 +542,11 @@ static void compileInsertAggregatesIntoResultColumns(llvm::Module & module, cons
     b.CreateRetVoid();
 }
 
-CompiledAggregateFunctions compileAggregateFunctions(CHJIT & jit, const std::vector<AggregateFunctionWithOffset> & functions, std::string functions_dump_name)
+CompiledAggregateFunctions compileAggregateFunctions(
+    CHJIT & jit,
+    const std::vector<AggregateFunctionWithOffset> & functions,
+    std::string functions_dump_name,
+    ExpressionJITBackend expression_jit_backend)
 {
     Stopwatch watch;
 
@@ -558,7 +563,8 @@ CompiledAggregateFunctions compileAggregateFunctions(CHJIT & jit, const std::vec
         compileAddIntoAggregateStatesFunctions(module, functions, add_aggregate_states_functions_name_single_place, AddIntoAggregateStatesPlacesArgumentType::SinglePlace);
         compileMergeAggregatesStates(module, functions, merge_aggregate_states_functions_name);
         compileInsertAggregatesIntoResultColumns(module, functions, insert_aggregate_states_functions_name);
-    });
+    },
+    expression_jit_backend);
 
     auto create_aggregate_states_function = reinterpret_cast<JITCreateAggregateStatesFunction>(compiled_module.function_name_to_symbol[create_aggregate_states_functions_name]);
     auto add_into_aggregate_states_function = reinterpret_cast<JITAddIntoAggregateStatesFunction>(compiled_module.function_name_to_symbol[add_aggregate_states_functions_name]);
@@ -758,14 +764,16 @@ CompiledSortDescriptionFunction compileSortDescription(
     CHJIT & jit,
     SortDescription & description,
     const DataTypes & sort_description_types,
-    const std::string & sort_description_dump)
+    const std::string & sort_description_dump,
+    ExpressionJITBackend expression_jit_backend)
 {
     Stopwatch watch;
 
     auto compiled_module = jit.compileModule([&](llvm::Module & module)
     {
         compileSortDescription(module, description, sort_description_types, sort_description_dump);
-    });
+    },
+    expression_jit_backend);
 
     ProfileEvents::increment(ProfileEvents::CompileExpressionsMicroseconds, watch.elapsedMicroseconds());
     ProfileEvents::increment(ProfileEvents::CompileExpressionsBytes, compiled_module.size);

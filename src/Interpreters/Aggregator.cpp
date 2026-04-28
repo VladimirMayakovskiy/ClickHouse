@@ -348,7 +348,8 @@ Aggregator::Params::Params(
     float min_hit_rate_to_use_consecutive_keys_optimization_,
     const StatsCollectingParams & stats_collecting_params_,
     bool enable_producing_buckets_out_of_order_in_aggregation_,
-    bool serialize_string_with_zero_byte_)
+    bool serialize_string_with_zero_byte_,
+    ExpressionJITBackend expression_jit_backend_)
     : keys(keys_)
     , keys_size(keys.size())
     , aggregates(aggregates_)
@@ -373,6 +374,7 @@ Aggregator::Params::Params(
     , stats_collecting_params(stats_collecting_params_)
     , enable_producing_buckets_out_of_order_in_aggregation(enable_producing_buckets_out_of_order_in_aggregation_)
     , serialize_string_with_zero_byte(serialize_string_with_zero_byte_)
+    , expression_jit_backend(expression_jit_backend_)
 {
 }
 
@@ -736,6 +738,7 @@ void Aggregator::compileAggregateFunctionsIfNeeded()
 
     SipHash aggregate_functions_description_hash;
     aggregate_functions_description_hash.update(functions_description);
+    aggregate_functions_description_hash.update(params.expression_jit_backend);
 
     const auto aggregate_functions_description_hash_key = aggregate_functions_description_hash.get128();
 
@@ -748,7 +751,7 @@ void Aggregator::compileAggregateFunctionsIfNeeded()
     auto compile = [&] ()
     {
         LOG_TRACE(log, "Compile expression {}", functions_description);
-        auto compiled_aggregate_functions = compileAggregateFunctions(getJITInstance(), functions_to_compile, functions_description);
+        auto compiled_aggregate_functions = compileAggregateFunctions(getJITInstance(), functions_to_compile, functions_description, params.expression_jit_backend);
         return std::make_shared<CompiledAggregateFunctionsHolder>(std::move(compiled_aggregate_functions));
     };
 

@@ -112,6 +112,7 @@ namespace Setting
     extern const SettingsUInt64 min_count_to_compile_sort_description;
     extern const SettingsUInt64 min_insert_block_size_bytes;
     extern const SettingsUInt64 min_insert_block_size_rows;
+    extern const SettingsExpressionJITBackend expression_jit_backend;
 }
 
 namespace MergeTreeSetting
@@ -2848,6 +2849,7 @@ void MergeTask::ExecuteAndFinalizeHorizontalPart::createMergedStream() const
         std::vector<bool> reverse_flags = global_ctx->metadata_snapshot->getSortingKeyReverseFlags();
         sort_description.compile_sort_description = global_ctx->data->getContext()->getSettingsRef()[Setting::compile_sort_description];
         sort_description.min_count_to_compile_sort_description = global_ctx->data->getContext()->getSettingsRef()[Setting::min_count_to_compile_sort_description];
+	sort_description.expression_jit_backend = global_ctx->data->getContext()->getSettingsRef()[Setting::expression_jit_backend];
 
         size_t sort_columns_size = sort_columns.size();
         sort_description.reserve(sort_columns_size);

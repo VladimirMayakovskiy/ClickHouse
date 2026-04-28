@@ -134,6 +134,8 @@ public:
 
         bool serialize_string_with_zero_byte = false;
 
+	ExpressionJITBackend expression_jit_backend = ExpressionJITBackend::LLVM;
+
         static size_t getMaxBytesBeforeExternalGroupBy(size_t max_bytes_before_external_group_by, double max_bytes_ratio_before_external_group_by);
 
         Params(
@@ -158,7 +160,8 @@ public:
             float min_hit_rate_to_use_consecutive_keys_optimization_,
             const StatsCollectingParams & stats_collecting_params_,
             bool enable_producing_buckets_out_of_order_in_aggregation_,
-            bool serialize_string_with_zero_byte_);
+            bool serialize_string_with_zero_byte_,
+	    ExpressionJITBackend expression_jit_backend_);
 
         /// Only parameters that matter during merge.
         Params(

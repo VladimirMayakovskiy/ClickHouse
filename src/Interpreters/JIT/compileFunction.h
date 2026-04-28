@@ -58,7 +58,7 @@ struct CompiledFunction
   * It is client responsibility to match ColumnData arguments size with
   * function arguments size and additional ColumnData for result.
   */
-CompiledFunction compileFunction(CHJIT & jit, const IFunctionBase & function);
+CompiledFunction compileFunction(CHJIT & jit, const IFunctionBase & function, ExpressionJITBackend expression_jit_backend);
 
 struct AggregateFunctionWithOffset
 {
@@ -96,7 +96,11 @@ struct CompiledAggregateFunctions
   * JITMergeAggregateStatesFunction will merge aggregate states for aggregate functions.
   * JITInsertAggregateStatesIntoColumnsFunction will insert aggregate states for aggregate functions into result columns.
   */
-CompiledAggregateFunctions compileAggregateFunctions(CHJIT & jit, const std::vector<AggregateFunctionWithOffset> & functions, std::string functions_dump_name);
+CompiledAggregateFunctions compileAggregateFunctions(
+    CHJIT & jit,
+    const std::vector<AggregateFunctionWithOffset> & functions,
+    std::string functions_dump_name,
+    ExpressionJITBackend expression_jit_backend);
 
 
 using JITSortDescriptionFunc = int8_t (*)(size_t, size_t, ColumnData *, ColumnData *);
@@ -111,7 +115,8 @@ CompiledSortDescriptionFunction compileSortDescription(
     CHJIT & jit,
     SortDescription & description,
     const DataTypes & sort_description_types,
-    const std::string & sort_description_dump);
+    const std::string & sort_description_dump,
+    ExpressionJITBackend expression_jit_backend);
 
 }
 

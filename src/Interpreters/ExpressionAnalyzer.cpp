@@ -112,6 +112,7 @@ namespace Setting
     extern const SettingsBool allow_suspicious_types_in_order_by;
     extern const SettingsNonZeroUInt64 grace_hash_join_initial_buckets;
     extern const SettingsNonZeroUInt64 grace_hash_join_max_buckets;
+    extern const SettingsExpressionJITBackend expression_jit_backend;
 }
 
 
@@ -885,14 +886,17 @@ void ExpressionAnalyzer::makeWindowDescriptions(ActionsDAG & actions)
 
     bool compile_sort_description = current_context->getSettingsRef()[Setting::compile_sort_description];
     size_t min_count_to_compile_sort_description = current_context->getSettingsRef()[Setting::min_count_to_compile_sort_description];
+    ExpressionJITBackend expression_jit_backend = current_context->getSettingsRef()[Setting::expression_jit_backend];
 
     for (auto & [_, window_description] : window_descriptions)
     {
         window_description.full_sort_description.compile_sort_description = compile_sort_description;
         window_description.full_sort_description.min_count_to_compile_sort_description = min_count_to_compile_sort_description;
+        window_description.full_sort_description.expression_jit_backend = expression_jit_backend;
 
         window_description.partition_by.compile_sort_description = compile_sort_description;
         window_description.partition_by.min_count_to_compile_sort_description = min_count_to_compile_sort_description;
+	window_description.partition_by.expression_jit_backend = expression_jit_backend;
     }
 }
 

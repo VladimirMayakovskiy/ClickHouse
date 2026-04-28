@@ -3,6 +3,7 @@
 #include <utility>
 #include <vector>
 #include <Core/ColumnsWithTypeAndName.h>
+#include <Core/SettingsEnums.h>
 #include <Core/NamesAndTypes.h>
 #include <Core/Names.h>
 #include <Common/SipHash.h>
@@ -308,7 +309,10 @@ public:
     bool hasNonDeterministic() const;
 
 #if USE_EMBEDDED_COMPILER
-    void compileExpressions(size_t min_count_to_compile_expression, const std::unordered_set<const Node *> & lazy_executed_nodes = {});
+    void compileExpressions(
+	size_t min_count_to_compile_expression,
+	ExpressionJITBackend expression_jit_backend,
+	const std::unordered_set<const Node *> & lazy_executed_nodes = {});
 #endif
 
     using NodeMapping = std::unordered_map<const Node *, const Node *>;
@@ -551,7 +555,10 @@ private:
         bool all_const);
 
 #if USE_EMBEDDED_COMPILER
-    void compileFunctions(size_t min_count_to_compile_expression, const std::unordered_set<const Node *> & lazy_executed_nodes = {});
+    void compileFunctions(
+	size_t min_count_to_compile_expression,
+	ExpressionJITBackend expression_jit_backend,
+	const std::unordered_set<const Node *> & lazy_executed_nodes = {});
 #endif
 
     bool removeUnusedConjunctions(NodeRawConstPtrs rejected_conjunctions, Node * predicate, bool removes_filter);

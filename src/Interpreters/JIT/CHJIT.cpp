@@ -2,6 +2,8 @@
 
 #if USE_EMBEDDED_COMPILER
 
+#include <filesystem>
+#include <fstream>
 #include <sys/mman.h>
 #include <boost/noncopyable.hpp>
 
@@ -18,6 +20,7 @@
 #include <llvm/MC/TargetRegistry.h>
 #include <llvm/Support/DynamicLibrary.h>
 #include <llvm/TargetParser/Host.h>
+#include "llvm/Transforms/Utils/Cloning.h"
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/SmallVectorMemoryBuffer.h>
 
@@ -26,8 +29,8 @@
 #include <Common/Exception.h>
 #include <Common/ErrnoException.h>
 #include <Common/formatReadable.h>
+#include <Common/logger_useful.h>
 #include <Core/Types.h>
-
 
 namespace DB
 {
@@ -38,6 +41,12 @@ namespace ErrorCodes
     extern const int LOGICAL_ERROR;
     extern const int CANNOT_ALLOCATE_MEMORY;
     extern const int CANNOT_MPROTECT;
+    extern const int CANNOT_OPEN_FILE;
+}
+
+static LoggerPtr getLogger()
+{
+    return ::getLogger("CHJIT");
 }
 
 
@@ -76,6 +85,15 @@ public:
     explicit JITCompiler(llvm::TargetMachine &target_machine_)
     : target_machine(target_machine_)
     {
+#if USE_TPDE_LLVM_BACKEND
+        tpde_compiler = tpde_llvm::LLVMCompiler::create(target_machine.getTargetTriple());
+	if (!tpde_compiler)
+	    throw Exception(
+	        ErrorCodes::CANNOT_COMPILE_CODE,
+		"TPDE backend is requested but no TPDE compiler is available for taget triple {}",
+		target_machine.getTargetTriple().str()
+	    );
+#endif
     }
 
     std::unique_ptr<llvm::MemoryBuffer> compile(llvm::Module & module)
@@ -107,10 +125,45 @@ public:
         return compiled_object_buffer;
     }
 
+#if USE_TPDE_LLVM_BACKEND
+
+    std::optional<tpde_llvm::JITMapper> compile_with_tpde(llvm::Module & module, std::function<void*(std::string_view)> resolver)
+    {
+        if (!tpde_compiler)
+	    throw Exception(ErrorCodes::CANNOT_COMPILE_CODE, "TPDE backend is requested but TPDE compiler is not initialized");
+
+	if (auto mapper = tpde_compiler->compile_and_map(module, resolver))
+	    return mapper;
+
+	return std::nullopt;
+    }
+
+#if DUMP_JIT_ARTIFACTS
+
+    std::optional<std::vector<uint8_t>> compile_with_tpde_to_object(llvm::Module & module)
+    {
+        std::vector<uint8_t> buf;
+        if (!tpde_compiler)
+            throw Exception(ErrorCodes::CANNOT_COMPILE_CODE, "TPDE backend is requested but TPDE compiler is not initialized");
+
+        if (!tpde_compiler->compile_to_elf(module, buf))
+            return std::nullopt;
+
+        return buf;
+    }
+
+#endif
+
+#endif
+
     ~JITCompiler() = default;
 
 private:
     llvm::TargetMachine & target_machine;
+
+#if USE_TPDE_LLVM_BACKEND
+    std::unique_ptr<tpde_llvm::LLVMCompiler> tpde_compiler;
+#endif
 };
 
 /** Arena that allocate all memory with system page_size.
@@ -353,6 +406,11 @@ public:
 
     ~JITSymbolResolver() override = default;
 
+    const std::unordered_map<std::string, void *> & getSymbols() const
+    {
+        return symbol_name_to_symbol_address;
+    }
+
 private:
     std::unordered_map<std::string, void *> symbol_name_to_symbol_address;
 };
@@ -382,9 +440,54 @@ private:
 //     llvm::JITEventListener * gdb_listener = nullptr;
 // };
 
+#if DUMP_JIT_ARTIFACTS
+
+static void dumpLLVMIR(const llvm::Module& module, std::uint64_t ts)
+{
+    auto path = (std::filesystem::temp_directory_path() / fmt::format("/tmp/llvm_ir_{}.ll", ts)).string();
+
+    std::error_code ec;
+    llvm::raw_fd_ostream os(path, ec, llvm::sys::fs::OF_Text);
+
+    if (ec)
+        throw Exception(ErrorCodes::CANNOT_OPEN_FILE, "Cannot open LLVM IR dump file: {}", path);
+
+    module.print(os, nullptr);
+}
+
+static void dumpObjectLLVM(const llvm::MemoryBuffer& buffer, std::uint64_t ts)
+{
+    auto path = std::filesystem::temp_directory_path() / fmt::format("/tmp/llvm_obj_{}.o", ts);
+
+    std::ofstream out(path, std::ios::binary);
+    if (!out)
+        throw Exception(ErrorCodes::CANNOT_OPEN_FILE, "Cannot open LLVM object dump file: {}", path.string());
+
+    out.write(buffer.getBufferStart(), buffer.getBufferSize());
+    out.close();
+}
+
+#if USE_TPDE_LLVM_BACKEND
+
+static void dumpObjectTPDE(const std::vector<uint8_t>& buf, std::uint64_t ts)
+{
+    auto path = std::filesystem::temp_directory_path() / fmt::format("/tmp/tpde_obj_{}.o", ts);
+
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out)
+        throw Exception(ErrorCodes::CANNOT_OPEN_FILE, "Cannot open TPDE object dump file: {}", path.string());
+
+    out.write(reinterpret_cast<const char *>(buf.data()), buf.size());
+    out.close();
+}
+
+#endif
+
+#endif
+
 CHJIT::CHJIT()
     : machine(getTargetMachine())
-, layout(machine->createDataLayout())
+    , layout(machine->createDataLayout())
     , compiler(std::make_unique<JITCompiler>(*machine))
     , symbol_resolver(std::make_unique<JITSymbolResolver>())
 {
@@ -410,13 +513,13 @@ CHJIT::CHJIT()
 
 CHJIT::~CHJIT() = default;
 
-CHJIT::CompiledModule CHJIT::compileModule(std::function<void (llvm::Module &)> compile_function)
+CHJIT::CompiledModule CHJIT::compileModule(std::function<void (llvm::Module &)> compile_function, ExpressionJITBackend expression_jit_backend)
 {
     std::lock_guard lock(jit_lock);
 
     auto module = createModuleForCompilation();
     compile_function(*module);
-    auto module_info = compileModule(std::move(module));
+    auto module_info = compileModule(std::move(module), expression_jit_backend);
 
     ++current_module_key;
     return module_info;
@@ -431,8 +534,76 @@ std::unique_ptr<llvm::Module> CHJIT::createModuleForCompilation()
     return module;
 }
 
-CHJIT::CompiledModule CHJIT::compileModule(std::unique_ptr<llvm::Module> module)
+CHJIT::CompiledModule CHJIT::compileModule(std::unique_ptr<llvm::Module> module, ExpressionJITBackend expression_jit_backend)
 {
+
+#if USE_TPDE_LLVM_BACKEND
+
+#if DUMP_JIT_ARTIFACTS
+    if (expression_jit_backend == ExpressionJITBackend::TPDE_WITH_DUMP)
+    {
+        auto ts = std::chrono::duration_cast<std::chrono::microseconds>(
+			std::chrono::system_clock::now().time_since_epoch()).count();
+        auto module_for_obj_dump = llvm::CloneModule(*module);
+        dumpLLVMIR(*module_for_obj_dump, ts);
+        if (auto buffer = compiler->compile_with_tpde_to_object(*module_for_obj_dump))
+            dumpObjectTPDE(*buffer, ts);
+    }
+#endif
+    if (expression_jit_backend == ExpressionJITBackend::TPDE || expression_jit_backend == ExpressionJITBackend::TPDE_WITH_DUMP)
+    {    
+    	if (auto tpde_mapper = compiler->compile_with_tpde(
+	        *module,
+		[&](std::string_view name) -> void *
+		{
+		    auto it = symbol_resolver->getSymbols().find(std::string(name));
+		    if (it == symbol_resolver->getSymbols().end())
+		        return nullptr;
+		    return it->second;
+		}))
+        {
+	    LOG_TRACE(getLogger(), "TPDE compile_and_map succeeded for module {}", module->getModuleIdentifier());
+
+            CompiledModule compiled_module;
+
+	    for (const auto & function : *module)
+	    {
+	        if (function.isDeclaration())
+	            continue;
+
+	        auto function_name = std::string(function.getName());
+
+	        auto * address = tpde_mapper->lookup_global(const_cast<llvm::GlobalValue *>(llvm::cast<llvm::GlobalValue>(&function)));
+
+	        if (!address)
+	            throw Exception(
+			ErrorCodes::CANNOT_COMPILE_CODE, "TPDE JIT mapper could not find symbol {} after compilation", function_name);
+
+	        compiled_module.function_name_to_symbol.emplace(std::move(function_name), address);
+            }
+
+	    compiled_module.size = tpde_mapper->get_mapped_range().second;
+	    compiled_module.identifier = current_module_key;
+	    compiled_module.expression_jit_backend = ExpressionJITBackend::TPDE;
+
+	    module_identifier_to_tpde_mapper.insert_or_assign(current_module_key, std::move(*tpde_mapper));
+
+	    compiled_code_size.fetch_add(compiled_module.size, std::memory_order_relaxed);
+
+	    LOG_TRACE(
+	        getLogger(),
+		"TPDE compile module succeeded for module_size: {}, module_identifier: {}",
+		compiled_module.size,
+		compiled_module.identifier);
+
+	    return compiled_module;
+        }
+    }
+
+#endif
+
+    LOG_TRACE(getLogger(), "Compilation with LLVM backend for module {}", module->getModuleIdentifier());
+
     runOptimizationPassesOnModule(*module);
 
 #ifdef PRINT_ASSEMBLY
@@ -441,6 +612,17 @@ CHJIT::CompiledModule CHJIT::compileModule(std::unique_ptr<llvm::Module> module)
 #endif
 
     auto buffer = compiler->compile(*module);
+
+#if DUMP_JIT_ARTIFACTS
+    if (expression_jit_backend == ExpressionJITBackend::LLVM_WITH_DUMP)
+    {
+        auto ts = std::chrono::duration_cast<std::chrono::microseconds>(
+			std::chrono::system_clock::now().time_since_epoch()).count();
+        dumpLLVMIR(*module, ts);
+        if (buffer)
+            dumpObjectLLVM(*buffer, ts);
+    }
+#endif
 
     llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> object = llvm::object::ObjectFile::createObjectFile(*buffer);
 
@@ -481,6 +663,7 @@ CHJIT::CompiledModule CHJIT::compileModule(std::unique_ptr<llvm::Module> module)
 
     compiled_module.size = module_memory_manager->allocatedSize();
     compiled_module.identifier = current_module_key;
+    compiled_module.expression_jit_backend = ExpressionJITBackend::LLVM;
 
     module_identifier_to_memory_manager[current_module_key] = std::move(module_memory_manager);
 
@@ -492,6 +675,19 @@ CHJIT::CompiledModule CHJIT::compileModule(std::unique_ptr<llvm::Module> module)
 void CHJIT::deleteCompiledModule(const CHJIT::CompiledModule & module)
 {
     std::lock_guard lock(jit_lock);
+
+#if USE_TPDE_LLVM_BACKEND
+    if (module.expression_jit_backend == ExpressionJITBackend::TPDE)
+    {
+    	auto tpde_module_it = module_identifier_to_tpde_mapper.find(module.identifier);
+    	if (tpde_module_it == module_identifier_to_tpde_mapper.end())
+    	    throw Exception(ErrorCodes::LOGICAL_ERROR, "[TPDE] There is no compiled module with identifier {}", module.identifier);
+
+        module_identifier_to_tpde_mapper.erase(tpde_module_it);
+	compiled_code_size.fetch_sub(module.size, std::memory_order_relaxed);
+	return;
+    }
+#endif
 
     auto module_it = module_identifier_to_memory_manager.find(module.identifier);
     if (module_it == module_identifier_to_memory_manager.end())

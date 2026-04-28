@@ -212,6 +212,7 @@ namespace Setting
     extern const SettingsBool enable_lazy_columns_replication;
     extern const SettingsBool serialize_string_in_memory_with_zero_byte;
     extern const SettingsBool use_hive_partitioning;
+    extern const SettingsExpressionJITBackend expression_jit_backend;
 }
 
 namespace ServerSetting
@@ -1456,6 +1457,7 @@ SortDescription InterpreterSelectQuery::getSortDescription(const ASTSelectQuery 
 
     order_descr.compile_sort_description = context_->getSettingsRef()[Setting::compile_sort_description];
     order_descr.min_count_to_compile_sort_description = context_->getSettingsRef()[Setting::min_count_to_compile_sort_description];
+    order_descr.expression_jit_backend = context_->getSettingsRef()[Setting::expression_jit_backend];
 
     return order_descr;
 }
@@ -2936,7 +2938,8 @@ static Aggregator::Params getAggregatorParams(
         settings[Setting::min_hit_rate_to_use_consecutive_keys_optimization],
         stats_collecting_params,
         settings[Setting::enable_producing_buckets_out_of_order_in_aggregation],
-        settings[Setting::serialize_string_in_memory_with_zero_byte]};
+        settings[Setting::serialize_string_in_memory_with_zero_byte],
+        settings[Setting::expression_jit_backend]};
 }
 
 void InterpreterSelectQuery::executeAggregation(

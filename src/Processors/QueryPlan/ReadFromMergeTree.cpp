@@ -228,6 +228,7 @@ namespace Setting
     extern const SettingsBool apply_row_policy_after_final;
     extern const SettingsBool apply_prewhere_after_final;
     extern const SettingsBool distributed_index_analysis_only_on_coordinator;
+    extern const SettingsExpressionJITBackend expression_jit_backend;
 }
 
 namespace MergeTreeSetting
@@ -974,6 +975,7 @@ Pipe ReadFromMergeTree::readByLayers(
 
         sort_description.compile_sort_description = settings[Setting::compile_sort_description];
         sort_description.min_count_to_compile_sort_description = settings[Setting::min_count_to_compile_sort_description];
+	sort_description.expression_jit_backend = settings[Setting::expression_jit_backend];
 
         sort_description.reserve(input_order_info->used_prefix_of_sorting_key_size);
         for (size_t i = 0; i < input_order_info->used_prefix_of_sorting_key_size; ++i)
@@ -1430,6 +1432,7 @@ Pipe ReadFromMergeTree::spreadMarkRangesAmongStreamsWithOrder(
         SortDescription sort_description;
         sort_description.compile_sort_description = settings[Setting::compile_sort_description];
         sort_description.min_count_to_compile_sort_description = settings[Setting::min_count_to_compile_sort_description];
+        sort_description.expression_jit_backend = settings[Setting::expression_jit_backend];
 
         sort_description.reserve(prefix_size);
         for (size_t i = 0; i < prefix_size; ++i)
@@ -1823,6 +1826,7 @@ Pipe ReadFromMergeTree::spreadMarkRangesAmongStreamsFinal(
         SortDescription sort_description;
         sort_description.compile_sort_description = settings[Setting::compile_sort_description];
         sort_description.min_count_to_compile_sort_description = settings[Setting::min_count_to_compile_sort_description];
+        sort_description.expression_jit_backend = settings[Setting::expression_jit_backend];
 
         size_t sort_columns_size = sort_columns.size();
         sort_description.reserve(sort_columns_size);

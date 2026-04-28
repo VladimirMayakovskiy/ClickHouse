@@ -564,4 +564,16 @@ enum class S3UriStyle : uint8_t
 
 DECLARE_SETTING_ENUM(S3UriStyle)
 
+
+/// Which backend should be used for expression JIT compilation.
+enum class ExpressionJITBackend : uint8_t
+{
+    LLVM = 0,
+    TPDE,
+    LLVM_WITH_DUMP,
+    TPDE_WITH_DUMP,
+};
+
+DECLARE_SETTING_ENUM(ExpressionJITBackend)
+
 }

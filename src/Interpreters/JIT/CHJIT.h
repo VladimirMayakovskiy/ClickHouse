@@ -12,6 +12,11 @@
 #include <llvm/IR/Module.h>
 #include <llvm/Target/TargetMachine.h>
 
+#if USE_TPDE_LLVM_BACKEND
+#include <Core/SettingsEnums.h>
+#include <tpde-llvm/LLVMCompiler.hpp>
+#endif
+
 namespace DB
 {
 
@@ -59,6 +64,9 @@ public:
         /// Module identifier. Should not be changed by client
         uint64_t identifier;
 
+	// Backend module compiled with
+        ExpressionJITBackend expression_jit_backend;
+
         /// Vector of compiled functions. Should not be changed by client.
         /// It is client responsibility to cast result function to right signature.
         /// After call to deleteCompiledModule compiled functions from module become invalid.
@@ -70,7 +78,7 @@ public:
       * IR code, then it will be compiled by CHJIT instance.
       * Return compiled module.
       */
-    CompiledModule compileModule(std::function<void (llvm::Module &)> compile_function);
+    CompiledModule compileModule(std::function<void (llvm::Module &)> compile_function, ExpressionJITBackend expression_jit_backend = ExpressionJITBackend::LLVM);
 
     /** Delete compiled module. Pointers to functions from module become invalid after this call.
       * It is client responsibility to be sure that there are no pointers to compiled module code.
@@ -91,7 +99,7 @@ private:
 
     std::unique_ptr<llvm::Module> createModuleForCompilation();
 
-    CompiledModule compileModule(std::unique_ptr<llvm::Module> module);
+    CompiledModule compileModule(std::unique_ptr<llvm::Module> module, ExpressionJITBackend expression_jit_backend);
 
     std::string getMangledName(const std::string & name_to_mangle) const;
 
@@ -110,6 +118,9 @@ private:
     std::atomic<size_t> compiled_code_size = 0;
     mutable std::mutex jit_lock;
 
+#if USE_TPDE_LLVM_BACKEND
+    std::unordered_map<uint64_t, tpde_llvm::JITMapper> module_identifier_to_tpde_mapper;
+#endif
 };
 
 }

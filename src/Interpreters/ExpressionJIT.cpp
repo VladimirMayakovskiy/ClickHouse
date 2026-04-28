@@ -271,12 +271,16 @@ private:
 
 static FunctionBasePtr compile(
     const CompileDAG & dag,
-    size_t min_count_to_compile_expression)
+    size_t min_count_to_compile_expression,
+    ExpressionJITBackend expression_jit_backend)
 {
     static std::unordered_map<UInt128, UInt64, UInt128Hash> counter;
     static std::mutex mutex;
 
-    auto hash_key = dag.hash();
+    SipHash hash;
+    hash.update(dag.hash());
+    hash.update(expression_jit_backend);
+    auto hash_key = hash.get128();
     {
         std::lock_guard lock(mutex);
         if (counter[hash_key]++ < min_count_to_compile_expression)
@@ -290,7 +294,7 @@ static FunctionBasePtr compile(
         auto [compiled_function_cache_entry, _] = compilation_cache->getOrSet(hash_key, [&] ()
         {
             LOG_TRACE(getLogger(), "Compile expression {}", llvm_function->getName());
-            auto compiled_function = compileFunction(getJITInstance(), *llvm_function);
+            auto compiled_function = compileFunction(getJITInstance(), *llvm_function, expression_jit_backend);
             return std::make_shared<CompiledFunctionHolder>(compiled_function);
         });
 
@@ -299,7 +303,7 @@ static FunctionBasePtr compile(
     }
     else
     {
-        auto compiled_function = compileFunction(getJITInstance(), *llvm_function);
+        auto compiled_function = compileFunction(getJITInstance(), *llvm_function, expression_jit_backend);
         auto compiled_function_holder = std::make_shared<CompiledFunctionHolder>(compiled_function);
 
         llvm_function->setCompiledFunction(std::move(compiled_function_holder));
@@ -467,7 +471,10 @@ static CompileDAG getCompilableDAG(
     return dag;
 }
 
-void ActionsDAG::compileFunctions(size_t min_count_to_compile_expression, const std::unordered_set<const ActionsDAG::Node *> & lazy_executed_nodes)
+void ActionsDAG::compileFunctions(
+    size_t min_count_to_compile_expression,
+    ExpressionJITBackend expression_jit_backend,
+    const std::unordered_set<const ActionsDAG::Node *> & lazy_executed_nodes)
 {
     struct Data
     {
@@ -604,7 +611,7 @@ void ActionsDAG::compileFunctions(size_t min_count_to_compile_expression, const 
         if (dag.getInputNodesCount() == 0)
             continue;
 
-        if (auto fn = compile(dag, min_count_to_compile_expression))
+        if (auto fn = compile(dag, min_count_to_compile_expression, expression_jit_backend))
         {
             ColumnsWithTypeAndName arguments;
             arguments.reserve(new_children.size());
