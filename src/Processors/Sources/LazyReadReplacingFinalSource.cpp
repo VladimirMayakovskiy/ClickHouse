@@ -263,7 +263,7 @@ QueryPlan LazyReadReplacingFinalSource::buildPlanFromReadingStep(
             /*stats_collecting_params_=*/{},
             /*enable_producing_buckets_out_of_order_in_aggregation_=*/false,
             /*serialize_string_with_zero_byte_=*/false,
-	    /*expression_jit_backend_=*/ExpressionJITBackend::LLVM);
+            /*expression_jit_backend_=*/ExpressionJITBackend::LLVM);
 
         auto merge_threads = settings[Setting::max_threads];
         auto temporary_data_merge_threads = settings[Setting::aggregation_memory_efficient_merge_threads]

@@ -73,7 +73,7 @@ TTLAggregationAlgorithm::TTLAggregationAlgorithm(
         /*stats_collecting_params_=*/{},
         settings[Setting::enable_producing_buckets_out_of_order_in_aggregation],
         settings[Setting::serialize_string_in_memory_with_zero_byte],
-	settings[Setting::expression_jit_backend]);
+        settings[Setting::expression_jit_backend]);
 
     aggregator = std::make_unique<Aggregator>(header, params);
 

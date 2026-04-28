@@ -975,7 +975,7 @@ Pipe ReadFromMergeTree::readByLayers(
 
         sort_description.compile_sort_description = settings[Setting::compile_sort_description];
         sort_description.min_count_to_compile_sort_description = settings[Setting::min_count_to_compile_sort_description];
-	sort_description.expression_jit_backend = settings[Setting::expression_jit_backend];
+        sort_description.expression_jit_backend = settings[Setting::expression_jit_backend];
 
         sort_description.reserve(input_order_info->used_prefix_of_sorting_key_size);
         for (size_t i = 0; i < input_order_info->used_prefix_of_sorting_key_size; ++i)

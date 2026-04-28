@@ -551,35 +551,35 @@ if (ENABLE_TPDE_LLVM_BACKEND)
 
     target_include_directories(clickhouse-tpde SYSTEM INTERFACE
         "${TPDE_SOURCE_DIR}/tpde/include"
-	"${TPDE_SOURCE_DIR}/tpde-llvm/include")
+        "${TPDE_SOURCE_DIR}/tpde-llvm/include")
 
     if (NOT TARGET ch_contrib::llvm)
-	message (FATAL_ERROR "Bundled TPDE integration requires bundled LLVM target ch_contrib::llvm")
+        message (FATAL_ERROR "Bundled TPDE integration requires bundled LLVM target ch_contrib::llvm")
     endif ()
 
     if (NOT TARGET LLVM)
-	add_library (LLVM INTERFACE)
+        add_library (LLVM INTERFACE)
 
-	target_link_libraries (LLVM INTERFACE ch_contrib::llvm)
-	target_include_directories (LLVM SYSTEM BEFORE INTERFACE ${LLVM_INCLUDE_DIRS})
+        target_link_libraries (LLVM INTERFACE ch_contrib::llvm)
+        target_include_directories (LLVM SYSTEM BEFORE INTERFACE ${LLVM_INCLUDE_DIRS})
 
-	target_compile_options(LLVM INTERFACE
+        target_compile_options(LLVM INTERFACE
             -Wno-error=unused-parameter
             -Wno-unused-parameter
         )
 
-	if (DEFINED LLVM_COMPILE_DEFINITIONS)
-	    target_compile_definitions(LLVM INTERFACE ${LLVM_INCLUDE_DIRS})
-	endif()
+        if (DEFINED LLVM_COMPILE_DEFINITIONS)
+            target_compile_definitions(LLVM INTERFACE ${LLVM_INCLUDE_DIRS})
+        endif()
     endif ()
 
-    set(LLVM_VERSION_MAJOR 21)
-    set(LLVM_VERSION_MINOR 1)
+    set (LLVM_VERSION_MAJOR 21)
+    set (LLVM_VERSION_MINOR 1)
 
-    set(LLVM_FOUND TRUE)
-    set(LLVM_ENABLE_RTTI TRUE)
+    set (LLVM_FOUND TRUE)
+    set (LLVM_ENABLE_RTTI TRUE)
 
-    set(LLVM_INCLUDE_DIRS
+    set (LLVM_INCLUDE_DIRS
         "${ClickHouse_SOURCE_DIR}/contrib/llvm-project/llvm/include"
         "${ClickHouse_BINARY_DIR}/contrib/llvm-project/llvm/include"
         "${ClickHouse_BINARY_DIR}/contrib/llvm-project-cmake/include"
@@ -596,11 +596,11 @@ if (ENABLE_TPDE_LLVM_BACKEND)
     set (TPDE_INCLUDE_TESTS OFF CACHE BOOL "" FORCE)
     set (TPDE_ENABLE_ENCODEGEN ON CACHE BOOL "" FORCE)
     set (TPDE_ENABLE_LLVM ON CACHE BOOL "" FORCE)
-    set(TPDE_TARGETS x86_64 CACHE STRING "" FORCE)
-    set(TPDE_INCLUDE_TESTS OFF CACHE BOOL "" FORCE)
+    set (TPDE_TARGETS x86_64 CACHE STRING "" FORCE)
+    set (TPDE_INCLUDE_TESTS OFF CACHE BOOL "" FORCE)
 
     if (NOT TARGET tpde_llvm)
-	add_subdirectory ("${TPDE_SOURCE_DIR}" "${ClickHouse_BINARY_DIR}/tpde")
+        add_subdirectory ("${TPDE_SOURCE_DIR}" "${ClickHouse_BINARY_DIR}/tpde")
     endif ()
 
     target_link_libraries (clickhouse-tpde INTERFACE tpde_llvm tpde)

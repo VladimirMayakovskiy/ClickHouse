@@ -87,12 +87,12 @@ public:
     {
 #if USE_TPDE_LLVM_BACKEND
         tpde_compiler = tpde_llvm::LLVMCompiler::create(target_machine.getTargetTriple());
-	if (!tpde_compiler)
-	    throw Exception(
-	        ErrorCodes::CANNOT_COMPILE_CODE,
-		"TPDE backend is requested but no TPDE compiler is available for taget triple {}",
-		target_machine.getTargetTriple().str()
-	    );
+        if (!tpde_compiler)
+            throw Exception(
+                ErrorCodes::CANNOT_COMPILE_CODE,
+                "TPDE backend is requested but no TPDE compiler is available for taget triple {}",
+                target_machine.getTargetTriple().str()
+            );
 #endif
     }
 
@@ -130,12 +130,12 @@ public:
     std::optional<tpde_llvm::JITMapper> compile_with_tpde(llvm::Module & module, std::function<void*(std::string_view)> resolver)
     {
         if (!tpde_compiler)
-	    throw Exception(ErrorCodes::CANNOT_COMPILE_CODE, "TPDE backend is requested but TPDE compiler is not initialized");
+            throw Exception(ErrorCodes::CANNOT_COMPILE_CODE, "TPDE backend is requested but TPDE compiler is not initialized");
 
-	if (auto mapper = tpde_compiler->compile_and_map(module, resolver))
-	    return mapper;
+        if (auto mapper = tpde_compiler->compile_and_map(module, resolver))
+            return mapper;
 
-	return std::nullopt;
+        return std::nullopt;
     }
 
 #if DUMP_JIT_ARTIFACTS
@@ -543,7 +543,7 @@ CHJIT::CompiledModule CHJIT::compileModule(std::unique_ptr<llvm::Module> module,
     if (expression_jit_backend == ExpressionJITBackend::TPDE_WITH_DUMP)
     {
         auto ts = std::chrono::duration_cast<std::chrono::microseconds>(
-			std::chrono::system_clock::now().time_since_epoch()).count();
+                        std::chrono::system_clock::now().time_since_epoch()).count();
         auto module_for_obj_dump = llvm::CloneModule(*module);
         dumpLLVMIR(*module_for_obj_dump, ts);
         if (auto buffer = compiler->compile_with_tpde_to_object(*module_for_obj_dump))
@@ -554,49 +554,49 @@ CHJIT::CompiledModule CHJIT::compileModule(std::unique_ptr<llvm::Module> module,
     {    
     	if (auto tpde_mapper = compiler->compile_with_tpde(
 	        *module,
-		[&](std::string_view name) -> void *
-		{
-		    auto it = symbol_resolver->getSymbols().find(std::string(name));
-		    if (it == symbol_resolver->getSymbols().end())
-		        return nullptr;
-		    return it->second;
-		}))
+                [&](std::string_view name) -> void *
+                {
+                    auto it = symbol_resolver->getSymbols().find(std::string(name));
+                    if (it == symbol_resolver->getSymbols().end())
+                        return nullptr;
+                    return it->second;
+                }))
         {
-	    LOG_TRACE(getLogger(), "TPDE compile_and_map succeeded for module {}", module->getModuleIdentifier());
+            LOG_TRACE(getLogger(), "TPDE compile_and_map succeeded for module {}", module->getModuleIdentifier());
 
             CompiledModule compiled_module;
 
-	    for (const auto & function : *module)
-	    {
-	        if (function.isDeclaration())
-	            continue;
+            for (const auto & function : *module)
+            {
+                if (function.isDeclaration())
+                    continue;
 
-	        auto function_name = std::string(function.getName());
+                auto function_name = std::string(function.getName());
 
-	        auto * address = tpde_mapper->lookup_global(const_cast<llvm::GlobalValue *>(llvm::cast<llvm::GlobalValue>(&function)));
+                auto * address = tpde_mapper->lookup_global(const_cast<llvm::GlobalValue *>(llvm::cast<llvm::GlobalValue>(&function)));
 
-	        if (!address)
-	            throw Exception(
-			ErrorCodes::CANNOT_COMPILE_CODE, "TPDE JIT mapper could not find symbol {} after compilation", function_name);
+                if (!address)
+                    throw Exception(
+                        ErrorCodes::CANNOT_COMPILE_CODE, "TPDE JIT mapper could not find symbol {} after compilation", function_name);
 
-	        compiled_module.function_name_to_symbol.emplace(std::move(function_name), address);
+                compiled_module.function_name_to_symbol.emplace(std::move(function_name), address);
             }
 
-	    compiled_module.size = tpde_mapper->get_mapped_range().second;
-	    compiled_module.identifier = current_module_key;
-	    compiled_module.expression_jit_backend = ExpressionJITBackend::TPDE;
+            compiled_module.size = tpde_mapper->get_mapped_range().second;
+            compiled_module.identifier = current_module_key;
+            compiled_module.expression_jit_backend = ExpressionJITBackend::TPDE;
 
-	    module_identifier_to_tpde_mapper.insert_or_assign(current_module_key, std::move(*tpde_mapper));
+            module_identifier_to_tpde_mapper.insert_or_assign(current_module_key, std::move(*tpde_mapper));
 
-	    compiled_code_size.fetch_add(compiled_module.size, std::memory_order_relaxed);
+            compiled_code_size.fetch_add(compiled_module.size, std::memory_order_relaxed);
 
-	    LOG_TRACE(
-	        getLogger(),
-		"TPDE compile module succeeded for module_size: {}, module_identifier: {}",
-		compiled_module.size,
-		compiled_module.identifier);
+            LOG_TRACE(
+                getLogger(),
+                "TPDE compile module succeeded for module_size: {}, module_identifier: {}",
+                compiled_module.size,
+                compiled_module.identifier);
 
-	    return compiled_module;
+            return compiled_module;
         }
     }
 
@@ -617,7 +617,7 @@ CHJIT::CompiledModule CHJIT::compileModule(std::unique_ptr<llvm::Module> module,
     if (expression_jit_backend == ExpressionJITBackend::LLVM_WITH_DUMP)
     {
         auto ts = std::chrono::duration_cast<std::chrono::microseconds>(
-			std::chrono::system_clock::now().time_since_epoch()).count();
+                        std::chrono::system_clock::now().time_since_epoch()).count();
         dumpLLVMIR(*module, ts);
         if (buffer)
             dumpObjectLLVM(*buffer, ts);
@@ -684,8 +684,8 @@ void CHJIT::deleteCompiledModule(const CHJIT::CompiledModule & module)
     	    throw Exception(ErrorCodes::LOGICAL_ERROR, "[TPDE] There is no compiled module with identifier {}", module.identifier);
 
         module_identifier_to_tpde_mapper.erase(tpde_module_it);
-	compiled_code_size.fetch_sub(module.size, std::memory_order_relaxed);
-	return;
+        compiled_code_size.fetch_sub(module.size, std::memory_order_relaxed);
+        return;
     }
 #endif
 
