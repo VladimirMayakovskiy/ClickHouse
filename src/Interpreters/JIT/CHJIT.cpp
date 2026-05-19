@@ -32,6 +32,10 @@
 #include <Common/logger_useful.h>
 #include <Core/Types.h>
 
+#if DUMP_JIT_ARTIFACTS
+#include <llvm/Support/Timer.h>
+#endif
+
 namespace DB
 {
 
@@ -442,9 +446,36 @@ private:
 
 #if DUMP_JIT_ARTIFACTS
 
+static bool IsIRDumpEnabled()
+{
+    static bool result = [](){const char* val = getenv("DUMP_LLVM_IR"); return val != nullptr && std::string(val) == "1";}();
+    return result;
+}
+
+static bool IsPassesTimeDumpEnabled()
+{
+    static bool result = [](){const char* val = getenv("DUMP_LLVM_PASSES_TIME"); return val != nullptr && std::string(val) == "1";}();
+    return result;
+}
+
+static void dumpLLVMPassesTime()
+{
+    auto ts = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    auto path = (std::filesystem::temp_directory_path() / fmt::format("llvm_passes_time_{}.txt", ts)).string();
+
+    std::error_code ec;
+    llvm::raw_fd_ostream os(path, ec, llvm::sys::fs::OF_Text);
+
+    if (ec)
+        throw Exception(ErrorCodes::CANNOT_OPEN_FILE, "Cannot open LLVM Passes Time dump file: {}", path);
+
+    llvm::TimerGroup::printAll(os);
+    llvm::TimerGroup::clearAll();
+}
+
 static void dumpLLVMIR(const llvm::Module& module, std::uint64_t ts)
 {
-    auto path = (std::filesystem::temp_directory_path() / fmt::format("/tmp/llvm_ir_{}.ll", ts)).string();
+    auto path = (std::filesystem::temp_directory_path() / fmt::format("llvm_ir_{}.ll", ts)).string();
 
     std::error_code ec;
     llvm::raw_fd_ostream os(path, ec, llvm::sys::fs::OF_Text);
@@ -457,7 +488,7 @@ static void dumpLLVMIR(const llvm::Module& module, std::uint64_t ts)
 
 static void dumpObjectLLVM(const llvm::MemoryBuffer& buffer, std::uint64_t ts)
 {
-    auto path = std::filesystem::temp_directory_path() / fmt::format("/tmp/llvm_obj_{}.o", ts);
+    auto path = std::filesystem::temp_directory_path() / fmt::format("llvm_obj_{}.o", ts);
 
     std::ofstream out(path, std::ios::binary);
     if (!out)
@@ -471,7 +502,7 @@ static void dumpObjectLLVM(const llvm::MemoryBuffer& buffer, std::uint64_t ts)
 
 static void dumpObjectTPDE(const std::vector<uint8_t>& buf, std::uint64_t ts)
 {
-    auto path = std::filesystem::temp_directory_path() / fmt::format("/tmp/tpde_obj_{}.o", ts);
+    auto path = std::filesystem::temp_directory_path() / fmt::format("tpde_obj_{}.o", ts);
 
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     if (!out)
@@ -536,11 +567,12 @@ std::unique_ptr<llvm::Module> CHJIT::createModuleForCompilation()
 
 CHJIT::CompiledModule CHJIT::compileModule(std::unique_ptr<llvm::Module> module, ExpressionJITBackend expression_jit_backend)
 {
+    runOptimizationPassesOnModule(*module);
 
 #if USE_TPDE_LLVM_BACKEND
 
 #if DUMP_JIT_ARTIFACTS
-    if (expression_jit_backend == ExpressionJITBackend::TPDE_WITH_DUMP)
+    if (expression_jit_backend == ExpressionJITBackend::TPDE && IsIRDumpEnabled())
     {
         auto ts = std::chrono::duration_cast<std::chrono::microseconds>(
                         std::chrono::system_clock::now().time_since_epoch()).count();
@@ -550,7 +582,7 @@ CHJIT::CompiledModule CHJIT::compileModule(std::unique_ptr<llvm::Module> module,
             dumpObjectTPDE(*buffer, ts);
     }
 #endif
-    if (expression_jit_backend == ExpressionJITBackend::TPDE || expression_jit_backend == ExpressionJITBackend::TPDE_WITH_DUMP)
+    if (expression_jit_backend == ExpressionJITBackend::TPDE)
     {    
     	if (auto tpde_mapper = compiler->compile_with_tpde(
 	        *module,
@@ -604,7 +636,7 @@ CHJIT::CompiledModule CHJIT::compileModule(std::unique_ptr<llvm::Module> module,
 
     LOG_TRACE(getLogger(), "Compilation with LLVM backend for module {}", module->getModuleIdentifier());
 
-    runOptimizationPassesOnModule(*module);
+    // runOptimizationPassesOnModule(*module);
 
 #ifdef PRINT_ASSEMBLY
     AssemblyPrinter assembly_printer(*machine);
@@ -614,7 +646,7 @@ CHJIT::CompiledModule CHJIT::compileModule(std::unique_ptr<llvm::Module> module,
     auto buffer = compiler->compile(*module);
 
 #if DUMP_JIT_ARTIFACTS
-    if (expression_jit_backend == ExpressionJITBackend::LLVM_WITH_DUMP)
+    if (IsIRDumpEnabled())
     {
         auto ts = std::chrono::duration_cast<std::chrono::microseconds>(
                         std::chrono::system_clock::now().time_since_epoch()).count();
@@ -715,6 +747,12 @@ std::string CHJIT::getMangledName(const std::string & name_to_mangle) const
 
 void CHJIT::runOptimizationPassesOnModule(llvm::Module & module) const
 {
+#if DUMP_JIT_ARTIFACTS
+    if (IsPassesTimeDumpEnabled())
+    {
+        llvm::TimePassesIsEnabled = true;
+    }
+#endif
     llvm::LoopAnalysisManager lam;
     llvm::FunctionAnalysisManager fam;
     llvm::CGSCCAnalysisManager cgam;
@@ -735,6 +773,13 @@ void CHJIT::runOptimizationPassesOnModule(llvm::Module & module) const
 
     llvm::ModulePassManager mpm = pb.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
     mpm.run(module, mam);
+
+#if DUMP_JIT_ARTIFACTS
+    if (IsPassesTimeDumpEnabled())
+    {
+        dumpLLVMPassesTime();
+    }
+#endif
 }
 
 std::unique_ptr<llvm::TargetMachine> CHJIT::getTargetMachine()
