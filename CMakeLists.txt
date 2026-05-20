@@ -114,7 +114,8 @@ if (NOT ((ARCH_AMD64 OR ARCH_AARCH64) AND OS_LINUX) OR SANITIZE OR USE_MUSL)
     set (ENABLE_XRAY 0)
 endif()
 
-option (ENABLE_TPDE_LLVM_BACKEND "Enable TPDE backend for expression JIT" OFF)
+option (ENABLE_TPDE_LLVM_BACKEND "Enable TPDE_LLVM backend for expression JIT" OFF)
+option (ENABLE_TPDE_BACKEND "Enable TPDE backend for expression JIT" OFF)
 set (TPDE_SOURCE_DIR "" CACHE PATH "Path to TPDE source tree")
 
 option (DUMP_JIT_ARTIFACTS "Dump jit artifacts for LLVM module" OFF)
@@ -538,7 +539,7 @@ if (ENABLE_XRAY)
     include (cmake/xray_instrumentation.cmake)
 endif()
 
-if (ENABLE_TPDE_LLVM_BACKEND)
+if (ENABLE_TPDE_LLVM_BACKEND OR ENABLE_TPDE_BACKEND)
     if (NOT ENABLE_EMBEDDED_COMPILER)
         message (FATAL_ERROR "TPDE backend requires USE_EMBEDDED_COMPILER=ON")
     endif ()

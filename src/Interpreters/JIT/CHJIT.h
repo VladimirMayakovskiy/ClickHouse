@@ -23,6 +23,7 @@ namespace DB
 class JITModuleMemoryManager;
 class JITSymbolResolver;
 class JITCompiler;
+class CHTPDEFunction;
 
 /** Custom JIT implementation.
   * Main use cases:
@@ -79,6 +80,11 @@ public:
       * Return compiled module.
       */
     CompiledModule compileModule(std::function<void (llvm::Module &)> compile_function, ExpressionJITBackend expression_jit_backend = ExpressionJITBackend::LLVM);
+
+#if USE_TPDE_BACKEND
+    // Compile function with TPDE backend.
+    CompiledModule compileFunctionWithTPDE(const CHTPDEFunction& function);
+#endif
 
     /** Delete compiled module. Pointers to functions from module become invalid after this call.
       * It is client responsibility to be sure that there are no pointers to compiled module code.

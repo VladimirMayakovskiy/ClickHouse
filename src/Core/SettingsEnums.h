@@ -569,9 +569,8 @@ DECLARE_SETTING_ENUM(S3UriStyle)
 enum class ExpressionJITBackend : uint8_t
 {
     LLVM = 0,
+    TPDE_LLVM,
     TPDE,
-    LLVM_WITH_DUMP,
-    TPDE_WITH_DUMP,
 };
 
 DECLARE_SETTING_ENUM(ExpressionJITBackend)

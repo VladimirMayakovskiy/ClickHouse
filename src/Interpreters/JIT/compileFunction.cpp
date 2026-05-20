@@ -15,6 +15,7 @@
 #    include <llvm/IR/BasicBlock.h>
 #    include <llvm/IR/Function.h>
 #    include <llvm/IR/IRBuilder.h>
+# include <Interpreters/JIT/CHTPDEFunction.h>
 
 namespace
 {
@@ -211,11 +212,14 @@ CompiledFunction compileFunction(CHJIT & jit, const IFunctionBase & function, Ex
 {
     Stopwatch watch;
 
-    auto compiled_module = jit.compileModule([&](llvm::Module & module)
-    {
-        compileFunction(module, function);
-    },
-    expression_jit_backend);
+    CHJIT::CompiledModule compiled_module;
+
+#if USE_TPDE_BACKEND
+    if (expression_jit_backend == ExpressionJITBackend::TPDE)
+        compiled_module = jit.compileFunctionWithTPDE(static_cast<const CHTPDEFunction &>(function));
+    else
+#endif
+        compiled_module = jit.compileModule([&](llvm::Module & module) { compileFunction(module, function); }, expression_jit_backend);
 
     ProfileEvents::increment(ProfileEvents::CompileExpressionsMicroseconds, watch.elapsedMicroseconds());
     ProfileEvents::increment(ProfileEvents::CompileExpressionsBytes, compiled_module.size);

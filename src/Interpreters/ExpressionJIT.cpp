@@ -12,6 +12,7 @@
 #include <DataTypes/Native.h>
 
 #include <Interpreters/JIT/CHJIT.h>
+#include <Interpreters/JIT/CHTPDEFunction.h>
 #include <Interpreters/JIT/CompileDAG.h>
 #include <Interpreters/JIT/compileFunction.h>
 #include <Interpreters/JIT/CompiledExpressionCache.h>
@@ -269,6 +270,121 @@ private:
     std::shared_ptr<CompiledFunctionHolder> compiled_function_holder;
 };
 
+#if USE_TPDE_BACKEND
+CHTPDEFunction::CHTPDEFunction(const CompileDAG & dag_)
+    : name(dag_.dump())
+    , dag(dag_)
+{
+    for (size_t i = 0; i < dag.getNodesCount(); ++i)
+    {
+        const auto & node = dag[i];
+        if (node.type == CompileDAG::CompileType::FUNCTION)
+            nested_functions.emplace_back(node.function);
+        else if (node.type == CompileDAG::CompileType::INPUT)
+            argument_types.emplace_back(node.result_type);
+    }
+}
+
+CHTPDEFunction::~CHTPDEFunction() = default;
+
+void CHTPDEFunction::setCompiledFunction(std::shared_ptr<CompiledFunctionHolder> compiled_function_holder_)
+{
+    compiled_function_holder = compiled_function_holder_;
+}
+
+bool CHTPDEFunction::isSuitableForShortCircuitArgumentsExecution(const DataTypesWithConstInfo & arguments) const
+{
+    for (const auto & f : nested_functions)
+        if (!f->isSuitableForShortCircuitArgumentsExecution(arguments))
+            return false;
+
+    return true;
+}
+
+ExecutableFunctionPtr CHTPDEFunction::prepare(const ColumnsWithTypeAndName &) const
+{
+    if (!compiled_function_holder)
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "Compiled function was not initialized {}", name);
+    return std::make_unique<LLVMExecutableFunction>(name, compiled_function_holder);
+}
+
+bool CHTPDEFunction::isDeterministic() const
+{
+    for (const auto & f : nested_functions)
+        if (!f->isDeterministic())
+            return false;
+
+    return true;
+}
+
+bool CHTPDEFunction::isDeterministicInScopeOfQuery() const
+{
+    for (const auto & f : nested_functions)
+        if (!f->isDeterministicInScopeOfQuery())
+            return false;
+
+    return true;
+}
+
+bool CHTPDEFunction::isSuitableForConstantFolding() const
+{
+    for (const auto & f : nested_functions)
+        if (!f->isSuitableForConstantFolding())
+            return false;
+
+    return true;
+}
+
+bool CHTPDEFunction::isInjective(const ColumnsWithTypeAndName & sample_block) const
+{
+    for (const auto & f : nested_functions)
+        if (!f->isInjective(sample_block))
+            return false;
+
+    return true;
+}
+
+bool CHTPDEFunction::hasInformationAboutMonotonicity() const
+{
+    for (const auto & f : nested_functions)
+        if (!f->hasInformationAboutMonotonicity())
+            return false;
+
+    return true;
+}
+
+IFunctionBase::Monotonicity CHTPDEFunction::getMonotonicityForRange(const IDataType & type, const Field & left, const Field & right) const
+{
+    const IDataType * type_ptr = &type;
+    Field left_mut = left;
+    Field right_mut = right;
+
+    IFunctionBase::Monotonicity result = { .is_monotonic = true, .is_positive = true, .is_always_monotonic = true };
+
+    /// monotonicity is only defined for unary functions, so the chain must describe a sequence of nested calls
+    for (size_t i = 0; i < nested_functions.size(); ++i)
+    {
+        IFunctionBase::Monotonicity m = nested_functions[i]->getMonotonicityForRange(*type_ptr, left_mut, right_mut);
+        if (!m.is_monotonic)
+            return m;
+        result.is_positive ^= !m.is_positive;
+        result.is_always_monotonic &= m.is_always_monotonic;
+        if (i + 1 < nested_functions.size())
+        {
+            if (left_mut != Field())
+                LLVMFunction::applyFunction(*nested_functions[i], left_mut);
+            if (right_mut != Field())
+                LLVMFunction::applyFunction(*nested_functions[i], right_mut);
+            if (!m.is_positive)
+                std::swap(left_mut, right_mut);
+            type_ptr = nested_functions[i]->getResultType().get();
+        }
+    }
+    return result;
+}
+
+#endif
+
 static FunctionBasePtr compile(
     const CompileDAG & dag,
     size_t min_count_to_compile_expression,
@@ -287,29 +403,45 @@ static FunctionBasePtr compile(
             return nullptr;
     }
 
-    auto llvm_function = std::make_shared<LLVMFunction>(dag);
+    std::shared_ptr<IFunctionBase> function;
+#if USE_TPDE_BACKEND
+    if (expression_jit_backend == ExpressionJITBackend::TPDE)
+        function = std::make_shared<CHTPDEFunction>(dag);
+    else
+#endif
+        function = std::make_shared<LLVMFunction>(dag);
+
+    auto set_compiled_function = [&](std::shared_ptr<CompiledFunctionHolder> compiled_function_holder_)
+    {
+#   if USE_TPDE_BACKEND
+        if (expression_jit_backend == ExpressionJITBackend::TPDE)
+            static_cast<CHTPDEFunction *>(function.get())->setCompiledFunction(std::move(compiled_function_holder_));
+        else
+#   endif
+            static_cast<LLVMFunction *>(function.get())->setCompiledFunction(std::move(compiled_function_holder_));
+    };
 
     if (auto * compilation_cache = CompiledExpressionCacheFactory::instance().tryGetCache())
     {
         auto [compiled_function_cache_entry, _] = compilation_cache->getOrSet(hash_key, [&] ()
         {
-            LOG_TRACE(getLogger(), "Compile expression {}", llvm_function->getName());
-            auto compiled_function = compileFunction(getJITInstance(), *llvm_function, expression_jit_backend);
+            LOG_TRACE(getLogger(), "Compile expression {}", function->getName());
+            auto compiled_function = compileFunction(getJITInstance(), *function, expression_jit_backend);
             return std::make_shared<CompiledFunctionHolder>(compiled_function);
         });
 
         std::shared_ptr<CompiledFunctionHolder> compiled_function_holder = std::static_pointer_cast<CompiledFunctionHolder>(compiled_function_cache_entry);
-        llvm_function->setCompiledFunction(std::move(compiled_function_holder));
+        set_compiled_function(std::move(compiled_function_holder));
     }
     else
     {
-        auto compiled_function = compileFunction(getJITInstance(), *llvm_function, expression_jit_backend);
+        auto compiled_function = compileFunction(getJITInstance(), *function, expression_jit_backend);
         auto compiled_function_holder = std::make_shared<CompiledFunctionHolder>(compiled_function);
 
-        llvm_function->setCompiledFunction(std::move(compiled_function_holder));
+        set_compiled_function(std::move(compiled_function_holder));
     }
 
-    return llvm_function;
+    return function;
 }
 
 static bool isCompilableConstant(const ActionsDAG::Node & node)

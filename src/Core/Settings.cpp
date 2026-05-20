@@ -1099,7 +1099,8 @@ Select the backend for expression JIT compilation.
 Possible values:
 
 - 'llvm' — use the built-in LLVM backend.
-- 'tpde' — use the experimental TPDE backend for supported expresioins and fallback to LLVM.
+- 'tpde_llvm' — use the experimental TPDE_LLVM backend with an intermediate LLVM IR translation step.
+- 'tpde' - use the experimental TPDE backend.
 )", 0) \
     DECLARE(Bool, compile_aggregate_expressions, true, R"(
 Enables or disables JIT-compilation of aggregate functions to native code. Enabling this setting can improve the performance.

@@ -89,3 +89,4 @@
 #cmakedefine01 WITH_COVERAGE
 #cmakedefine01 USE_TPDE_LLVM_BACKEND
 #cmakedefine01 DUMP_JIT_ARTIFACTS
+#cmakedefine01 USE_TPDE_BACKEND

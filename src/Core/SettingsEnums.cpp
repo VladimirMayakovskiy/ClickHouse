@@ -487,8 +487,7 @@ IMPLEMENT_SETTING_ENUM(S3UriStyle, ErrorCodes::BAD_ARGUMENTS,
 
 IMPLEMENT_SETTING_ENUM(ExpressionJITBackend, ErrorCodes::BAD_ARGUMENTS,
    {{"llvm", ExpressionJITBackend::LLVM},
-    {"tpde", ExpressionJITBackend::TPDE},
-    {"llvm_with_dump", ExpressionJITBackend::LLVM_WITH_DUMP},
-    {"tpde_with_dump", ExpressionJITBackend::TPDE_WITH_DUMP}})
+    {"tpde_llvm", ExpressionJITBackend::TPDE_LLVM},
+    {"tpde", ExpressionJITBackend::TPDE}})
 
 }

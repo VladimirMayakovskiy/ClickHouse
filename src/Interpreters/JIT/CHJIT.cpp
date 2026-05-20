@@ -36,6 +36,11 @@
 #include <llvm/Support/Timer.h>
 #endif
 
+#if USE_TPDE_BACKEND
+#include "CHTPDECompiler.h"
+#include "CHTPDEFunction.h"
+#endif
+
 namespace DB
 {
 
@@ -89,15 +94,18 @@ public:
     explicit JITCompiler(llvm::TargetMachine &target_machine_)
     : target_machine(target_machine_)
     {
-#if USE_TPDE_LLVM_BACKEND
-        tpde_compiler = tpde_llvm::LLVMCompiler::create(target_machine.getTargetTriple());
-        if (!tpde_compiler)
+#   if USE_TPDE_LLVM_BACKEND
+        tpde_llvm_compiler = tpde_llvm::LLVMCompiler::create(target_machine.getTargetTriple());
+        if (!tpde_llvm_compiler)
             throw Exception(
                 ErrorCodes::CANNOT_COMPILE_CODE,
                 "TPDE backend is requested but no TPDE compiler is available for taget triple {}",
                 target_machine.getTargetTriple().str()
             );
-#endif
+#   endif
+#   if USE_TPDE_BACKEND
+        tpde_compiler = ch_tpde::CHTPDECompiler::create();
+#   endif
     }
 
     std::unique_ptr<llvm::MemoryBuffer> compile(llvm::Module & module)
@@ -133,10 +141,10 @@ public:
 
     std::optional<tpde_llvm::JITMapper> compile_with_tpde(llvm::Module & module, std::function<void*(std::string_view)> resolver)
     {
-        if (!tpde_compiler)
+        if (!tpde_llvm_compiler)
             throw Exception(ErrorCodes::CANNOT_COMPILE_CODE, "TPDE backend is requested but TPDE compiler is not initialized");
 
-        if (auto mapper = tpde_compiler->compile_and_map(module, resolver))
+        if (auto mapper = tpde_llvm_compiler->compile_and_map(module, resolver))
             return mapper;
 
         return std::nullopt;
@@ -147,10 +155,10 @@ public:
     std::optional<std::vector<uint8_t>> compile_with_tpde_to_object(llvm::Module & module)
     {
         std::vector<uint8_t> buf;
-        if (!tpde_compiler)
+        if (!tpde_llvm_compiler)
             throw Exception(ErrorCodes::CANNOT_COMPILE_CODE, "TPDE backend is requested but TPDE compiler is not initialized");
 
-        if (!tpde_compiler->compile_to_elf(module, buf))
+        if (!tpde_llvm_compiler->compile_to_elf(module, buf))
             return std::nullopt;
 
         return buf;
@@ -160,13 +168,27 @@ public:
 
 #endif
 
+#if USE_TPDE_BACKEND
+
+    void compile(const CHTPDEFunction& function, std::function<void*(std::string_view)> resolver)
+    {
+        if (!tpde_compiler)
+            throw Exception(ErrorCodes::CANNOT_COMPILE_CODE, "TPDE backend is requested but TPDE compiler is not initialized"); 
+        tpde_compiler->compile_and_map(function, resolver);
+    }
+
+#endif
+
     ~JITCompiler() = default;
 
 private:
     llvm::TargetMachine & target_machine;
 
 #if USE_TPDE_LLVM_BACKEND
-    std::unique_ptr<tpde_llvm::LLVMCompiler> tpde_compiler;
+    std::unique_ptr<tpde_llvm::LLVMCompiler> tpde_llvm_compiler;
+#endif
+#if USE_TPDE_BACKEND
+    std::unique_ptr<ch_tpde::CHTPDECompiler> tpde_compiler;
 #endif
 };
 
@@ -572,7 +594,7 @@ CHJIT::CompiledModule CHJIT::compileModule(std::unique_ptr<llvm::Module> module,
 #if USE_TPDE_LLVM_BACKEND
 
 #if DUMP_JIT_ARTIFACTS
-    if (expression_jit_backend == ExpressionJITBackend::TPDE && IsIRDumpEnabled())
+    if (expression_jit_backend == ExpressionJITBackend::TPDE_LLVM && IsIRDumpEnabled())
     {
         auto ts = std::chrono::duration_cast<std::chrono::microseconds>(
                         std::chrono::system_clock::now().time_since_epoch()).count();
@@ -582,7 +604,7 @@ CHJIT::CompiledModule CHJIT::compileModule(std::unique_ptr<llvm::Module> module,
             dumpObjectTPDE(*buffer, ts);
     }
 #endif
-    if (expression_jit_backend == ExpressionJITBackend::TPDE)
+    if (expression_jit_backend == ExpressionJITBackend::TPDE_LLVM)
     {    
     	if (auto tpde_mapper = compiler->compile_with_tpde(
 	        *module,
@@ -616,7 +638,7 @@ CHJIT::CompiledModule CHJIT::compileModule(std::unique_ptr<llvm::Module> module,
 
             compiled_module.size = tpde_mapper->get_mapped_range().second;
             compiled_module.identifier = current_module_key;
-            compiled_module.expression_jit_backend = ExpressionJITBackend::TPDE;
+            compiled_module.expression_jit_backend = ExpressionJITBackend::TPDE_LLVM;
 
             module_identifier_to_tpde_mapper.insert_or_assign(current_module_key, std::move(*tpde_mapper));
 
@@ -704,12 +726,25 @@ CHJIT::CompiledModule CHJIT::compileModule(std::unique_ptr<llvm::Module> module,
     return compiled_module;
 }
 
+#if USE_TPDE_BACKEND
+CHJIT::CompiledModule CHJIT::compileFunctionWithTPDE(const CHTPDEFunction & function)
+{
+    std::lock_guard lock(jit_lock);
+
+    LOG_TRACE(getLogger(), "TPDE try compile function {}", function.getName());
+    compiler->compile(function, [&](std::string_view name) -> void * { return nullptr; });
+
+    ++current_module_key;
+    return {};
+}
+#endif
+
 void CHJIT::deleteCompiledModule(const CHJIT::CompiledModule & module)
 {
     std::lock_guard lock(jit_lock);
 
 #if USE_TPDE_LLVM_BACKEND
-    if (module.expression_jit_backend == ExpressionJITBackend::TPDE)
+    if (module.expression_jit_backend == ExpressionJITBackend::TPDE_LLVM)
     {
     	auto tpde_module_it = module_identifier_to_tpde_mapper.find(module.identifier);
     	if (tpde_module_it == module_identifier_to_tpde_mapper.end())
